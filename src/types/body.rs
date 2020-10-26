@@ -31,7 +31,7 @@ impl Serialize for Body {
             }
             SpecificFields::Message {
                 ref envelope,
-                ref body_structure,
+                structure: ref body_structure,
                 number_of_lines,
             } => {
                 writer.write_all(b"\"MESSAGE\" \"RFC822\" ")?;
@@ -78,6 +78,30 @@ pub struct BasicFields {
     /// Note that this size is the size in its transfer encoding
     /// and not the resulting size after any decoding.
     pub size: Number,
+}
+
+impl BasicFields {
+    // FIXME: bad API design. Must often be called with new::<&str, &str, &str>.
+    pub fn new<I1, I2, I3>(
+        parameter_list: Vec<(IString, IString)>,
+        id: Option<I1>,
+        description: Option<I2>,
+        content_transfer_encoding: I3,
+        size: u32,
+    ) -> BasicFields
+    where
+        I1: Into<IString>,
+        I2: Into<IString>,
+        I3: Into<IString>,
+    {
+        BasicFields {
+            parameter_list,
+            id: NString(id.map(|inner| inner.into())),
+            description: NString(description.map(|inner| inner.into())),
+            content_transfer_encoding: content_transfer_encoding.into(),
+            size,
+        }
+    }
 }
 
 impl Serialize for BasicFields {
@@ -170,7 +194,7 @@ pub enum SpecificFields {
         /// the envelope structure,
         envelope: Envelope,
         /// body structure,
-        body_structure: Box<BodyStructure>,
+        structure: Box<BodyStructure>,
         /// and size in text lines of the encapsulated message.
         number_of_lines: Number,
     },
@@ -282,7 +306,7 @@ pub enum BodyStructure {
     Multi {
         bodies: Vec<BodyStructure>,
         subtype: IString,
-        extension_data: Option<MultiPartExtensionData>,
+        extension: Option<MultiPartExtensionData>,
     },
 }
 
@@ -300,7 +324,7 @@ impl Serialize for BodyStructure {
             BodyStructure::Multi {
                 bodies,
                 subtype,
-                extension_data,
+                extension: extension_data,
             } => {
                 for body in bodies {
                     body.serialize(writer)?;
@@ -455,5 +479,88 @@ impl Serialize for MultiPartExtensionData {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::codec::Serialize;
+    use crate::parse::response::response;
+    use crate::types::body::{BasicFields, Body, BodyStructure, SpecificFields};
+    use crate::types::core::{IString, NString};
+    use crate::types::envelope::Envelope;
+    use crate::types::response::{Data, DataItemResponse, Response};
+    use nom::dbg_dmp;
+
+    #[test]
+    fn serialize_parse() {
+        let responses = &[
+            Response::Data(Data::fetch(
+                1,
+                vec![DataItemResponse::Structure {
+                    structure: BodyStructure::Single {
+                        body: Body {
+                            basic: BasicFields::new::<&str, &str, &str>(
+                                vec![],
+                                None,
+                                None,
+                                "base64",
+                                123,
+                            ),
+                            specific: SpecificFields::Message {
+                                envelope: Envelope {
+                                    date: NString(None),
+                                    subject: NString(None),
+                                    from: vec![],
+                                    sender: vec![],
+                                    reply_to: vec![],
+                                    to: vec![],
+                                    cc: vec![],
+                                    bcc: vec![],
+                                    in_reply_to: NString(None),
+                                    message_id: NString(None),
+                                },
+                                structure: Box::new(BodyStructure::Single {
+                                    body: Body {
+                                        basic: BasicFields::new::<&str, &str, &str>(
+                                            vec![],
+                                            None,
+                                            None,
+                                            "base64",
+                                            123,
+                                        ),
+                                        specific: SpecificFields::Text {
+                                            subtype: IString::from("plain"),
+                                            number_of_lines: 1,
+                                        },
+                                    },
+                                    extension: None,
+                                }),
+                                number_of_lines: 5,
+                            },
+                        },
+                        extension: None,
+                    },
+                    with_extension_data: false,
+                }],
+            )),
+            Response::Data(Data::fetch(
+                1,
+                vec![DataItemResponse::Content {
+                    section: None,
+                    data: NString(None),
+                    origin: None,
+                }],
+            )),
+        ];
+
+        for res in responses {
+            let mut buffer = Vec::new();
+            res.serialize(&mut buffer).unwrap();
+
+            let res = dbg_dmp(response, "resonse")(&buffer);
+
+            println!("<<<{:#?}>>>", res);
+        }
     }
 }

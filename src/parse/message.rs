@@ -105,11 +105,17 @@ fn msg_att_static(input: &[u8]) -> IResult<&[u8], DataItemResponse> {
         alt((
             map(
                 tuple((tag_no_case(b"BODYSTRUCTURE"), SP, body(8))),
-                |(_, _, body)| DataItemResponse::BodyStructure(body),
+                |(_, _, structure)| DataItemResponse::Structure {
+                    structure,
+                    with_extension_data: true,
+                },
             ),
             map(
                 tuple((tag_no_case(b"BODY"), SP, body(8))),
-                |(_, _, body)| DataItemResponse::Body(body),
+                |(_, _, structure)| DataItemResponse::Structure {
+                    structure,
+                    with_extension_data: false,
+                },
             ),
         )),
         map(
@@ -120,7 +126,7 @@ fn msg_att_static(input: &[u8]) -> IResult<&[u8], DataItemResponse> {
                 SP,
                 nstring,
             )),
-            |(_, section, origin, _, data)| DataItemResponse::BodyExt {
+            |(_, section, origin, _, data)| DataItemResponse::Content {
                 section,
                 origin,
                 data: data.to_owned(),

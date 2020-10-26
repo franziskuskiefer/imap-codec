@@ -467,6 +467,68 @@ pub enum Data {
     },
 }
 
+impl Data {
+    pub fn capability(caps: Vec<Capability>) -> Data {
+        // TODO: check caps?
+        Data::Capability(caps)
+    }
+
+    pub fn list<M: Into<Mailbox>>(
+        mailbox: M,
+        delimiter: Option<char>,
+        items: Vec<FlagNameAttribute>,
+    ) -> Data {
+        Data::List {
+            mailbox: mailbox.into(),
+            delimiter,
+            items,
+        }
+    }
+
+    pub fn lsub<M: Into<Mailbox>>(
+        mailbox: M,
+        delimiter: Option<char>,
+        items: Vec<FlagNameAttribute>,
+    ) -> Data {
+        Data::Lsub {
+            mailbox: mailbox.into(),
+            delimiter,
+            items,
+        }
+    }
+
+    pub fn status<M: Into<Mailbox>>(mailbox: M, items: Vec<StatusItemResponse>) -> Data {
+        Data::Status {
+            mailbox: mailbox.into(),
+            items,
+        }
+    }
+
+    pub fn search(set: Vec<u32>) -> Data {
+        Data::Search(set)
+    }
+
+    pub fn flags(flags: Vec<Flag>) -> Data {
+        Data::Flags(flags)
+    }
+
+    pub fn exists(message_count: u32) -> Data {
+        Data::Exists(message_count)
+    }
+
+    pub fn recent(recent_count: u32) -> Data {
+        Data::Recent(recent_count)
+    }
+
+    pub fn expunge(seq_no: u32) -> Data {
+        Data::Expunge(seq_no)
+    }
+
+    pub fn fetch(seq_or_uid: u32, items: Vec<DataItemResponse>) -> Data {
+        Data::Fetch { seq_or_uid, items }
+    }
+}
+
 impl Serialize for Data {
     fn serialize(&self, writer: &mut impl Write) -> std::io::Result<()> {
         match self {
@@ -829,10 +891,20 @@ impl Serialize for Capability {
 /// The current data items are:
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataItemResponse {
+    /// A parenthesized list that describes the [MIME-IMB] body
+    /// structure of a message.  This is computed by the server by
+    /// parsing the [MIME-IMB] header fields, defaulting various fields
+    /// as necessary.
+    ///
+    /// `BODYSTRUCTURE`
+    ///
     /// A form of BODYSTRUCTURE without extension data.
     ///
     /// `BODY`
-    Body(BodyStructure),
+    Structure {
+        structure: BodyStructure,
+        with_extension_data: bool,
+    },
 
     /// A string expressing the body contents of the specified section.
     /// The string SHOULD be interpreted by the client according to the
@@ -864,19 +936,11 @@ pub enum DataItemResponse {
     /// decode the transfer encoded string.
     ///
     /// `BODY[<section>]<<origin octet>>`
-    BodyExt {
+    Content {
         section: Option<Section>,
         origin: Option<u32>,
         data: NString,
     },
-
-    /// A parenthesized list that describes the [MIME-IMB] body
-    /// structure of a message.  This is computed by the server by
-    /// parsing the [MIME-IMB] header fields, defaulting various fields
-    /// as necessary.
-    ///
-    /// `BODYSTRUCTURE`
-    BodyStructure(BodyStructure),
 
     /// A parenthesized list that describes the envelope structure of a
     /// message.  This is computed by the server by parsing the
@@ -931,7 +995,7 @@ impl Serialize for DataItemResponse {
         use DataItemResponse::*;
 
         match self {
-            BodyExt {
+            Content {
                 section,
                 origin,
                 data,
@@ -947,14 +1011,27 @@ impl Serialize for DataItemResponse {
                 writer.write_all(b" ")?;
                 data.serialize(writer)
             }
-            // FIXME: do not return body-ext-1part and body-ext-mpart here
-            Body(body) => {
-                writer.write_all(b"BODY ")?;
-                body.serialize(writer)
-            }
-            BodyStructure(body) => {
-                writer.write_all(b"BODYSTRUCTURE ")?;
-                body.serialize(writer)
+            Structure {
+                structure,
+                with_extension_data,
+            } => {
+                if *with_extension_data {
+                    writer.write_all(b"BODYSTRUCTURE ")?;
+                    structure.serialize(writer)
+                } else {
+                    writer.write_all(b"BODY ")?;
+                    // TODO: refactor this!
+                    let structure = {
+                        let mut structure = structure.clone();
+                        match &mut structure {
+                            BodyStructure::Single { extension, .. } => *extension = None,
+                            BodyStructure::Multi { extension, .. } => *extension = None,
+                        }
+                        structure
+                    };
+
+                    structure.serialize(writer)
+                }
             }
             Envelope(envelope) => {
                 writer.write_all(b"ENVELOPE ")?;

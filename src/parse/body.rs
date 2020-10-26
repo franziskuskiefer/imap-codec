@@ -152,7 +152,7 @@ fn body_type_msg_limited<'a>(
             basic,
             SpecificFields::Message {
                 envelope,
-                body_structure: Box::new(body_structure),
+                structure: Box::new(body_structure),
                 number_of_lines,
             },
         ),
@@ -441,7 +441,7 @@ fn body_type_mpart_limited(
         BodyStructure::Multi {
             bodies,
             subtype: subtype.to_owned(),
-            extension_data: maybe_extension_data,
+            extension: maybe_extension_data,
         },
     ))
 }
