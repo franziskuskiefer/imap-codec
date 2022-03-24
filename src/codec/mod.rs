@@ -31,6 +31,16 @@ pub trait Encode {
     fn encode(&self, writer: &mut impl Write) -> std::io::Result<()>;
 }
 
+// TODO: only an example.
+pub trait Decode {
+    fn decode(input: &[u8]);
+}
+
+// TODO: only an example.
+impl Decode for Command {
+    fn decode(input: &[u8]) {}
+}
+
 // ----- Command -----
 
 impl Encode for Command {

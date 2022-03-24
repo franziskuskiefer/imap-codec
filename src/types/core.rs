@@ -537,7 +537,7 @@ impl<'a> AtomRef<'a> {
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq, Eq, Hash)]
-pub(crate) enum IStringRef<'a> {
+pub enum IStringRef<'a> {
     Literal(LiteralRef<'a>),
     Quoted(Cow<'a, str>),
 }
@@ -553,7 +553,7 @@ impl<'a> IStringRef<'a> {
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq, Eq, Hash)]
-pub(crate) struct NStringRef<'a>(pub Option<IStringRef<'a>>);
+pub struct NStringRef<'a>(pub Option<IStringRef<'a>>);
 
 impl<'a> NStringRef<'a> {
     pub fn to_owned(&self) -> NString {
